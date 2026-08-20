@@ -12,8 +12,13 @@ const io = new Server(server, {
   }
 });
 
-// የስታቲክ ፋይሎች (HTML, CSS, JS) ማከማቻ ፎልደር ማሳወቅ
+// ፋይሎቹ ያሉበትን ፎልደር በግልጽ ማሳየት
 app.use(express.static(path.join(__dirname)));
+
+// ተጠቃሚው ወደ ዋናው ሊንክ ሲገባ index.html ን በግልጽ እንዲልክ ማድረግ
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 let users = {};
 let activeTickets = [];
