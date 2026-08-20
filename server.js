@@ -13,11 +13,10 @@ const io = new Server(server, {
 });
 
 // ፋይሎቹ ያሉበትን ፎልደር በግልጽ ማሳየት
-app.use(express.static(path.join(__dirname)));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// ተጠቃሚው ወደ ዋናው ሊንክ ሲገባ index.html ን በግልጽ እንዲልክ ማድረግ
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 let users = {};
