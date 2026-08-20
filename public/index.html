@@ -2,32 +2,62 @@
 <html lang="am">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Keno & Bingo Live - Home</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Keno & Bingo Hub</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    body { background: #0f172a; color: #fff; padding: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
-    .container { width: 100%; max-width: 400px; text-align: center; }
-    h1 { font-size: 22px; color: #f59e0b; margin-bottom: 8px; }
-    p { font-size: 13px; color: #94a3b8; margin-bottom: 24px; }
-    .menu-btn { display: block; width: 100%; background: #2563eb; color: #fff; padding: 14px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px; margin-bottom: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
-    .menu-btn.bingo { background: #16a34a; }
-    .menu-btn:active { transform: scale(0.98); }
+    body { background: #0f172a; color: #fff; padding: 15px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+    .card { width: 100%; max-width: 400px; background: #1e293b; border-radius: 12px; padding: 15px; margin-bottom: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+    .header { display: flex; justify-content: space-between; align-items: center; }
+    .balance { color: #4ade80; font-weight: bold; font-size: 16px; }
+    .btn-dep { background: #16a34a; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; }
+    .menu-container { display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
+    .game-link { display: block; text-align: center; background: #2563eb; color: white; padding: 14px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; transition: background 0.2s; }
+    .game-link.bingo { background: #9333ea; }
+    .game-link:hover { opacity: 0.9; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>🎰 Addis Keno & Bingo Live</h1>
-    <p>እባክዎ መጫወት የሚፈልጉትን ጨዋታ ይምረጡ</p>
+
+  <div class="card header">
+    <div>👤 <span id="user-name">ተጫዋች</span></div>
+    <div>
+      <div class="balance">💰 <span id="user-balance">0.00</span> ETB</div>
+    </div>
+  </div>
+
+  <div class="card" style="text-align: center;">
+    <h2 style="color: #38bdf8; margin-bottom: 10px;">🎮 እንኳን ደህና መጡ</h2>
+    <p style="font-size: 13px; color: #94a3b8;">እባክዎ መጫወት የሚፈልጉትን ጨዋታ ይምረጡ፦</p>
     
-    <a href="keno.html" class="menu-btn">🎲 የኬኖ ጨዋታ (Keno Live)</a>
-    <a href="bingo.html" class="menu-btn bingo">🎯 የቢንጎ ጨዋታ (Bingo Live)</a>
+    <div class="menu-container">
+      <a href="keno.html" class="game-link">🎲 የኬኖ ጨዋታ (Keno Live)</a>
+      <a href="bingo.html" class="game-link bingo"> bingo የቢንጎ ጨዋታ (Bingo Live)</a>
+    </div>
   </div>
 
   <script>
+    const socket = io("https://bk-gbd9.onrender.com"); // የእርስዎን የሰርቨር ሊንክ ያስገቡ
     const tg = window.Telegram?.WebApp;
     tg?.expand();
+
+    const currentUser = {
+      id: String(tg?.initDataUnsafe?.user?.id || "user_" + Math.floor(Math.random()*1000)),
+      first_name: tg?.initDataUnsafe?.user?.first_name || "ተጫዋች"
+    };
+
+    socket.on('connect', () => socket.emit('registerUser', currentUser));
+
+    socket.on('userData', (data) => {
+      document.getElementById('user-name').innerText = data.user.name;
+      document.getElementById('user-balance').innerText = data.user.balance.toFixed(2);
+    });
+
+    socket.on('balanceUpdated', (newBal) => {
+      document.getElementById('user-balance').innerText = parseFloat(newBal).toFixed(2);
+    });
   </script>
 </body>
 </html>
