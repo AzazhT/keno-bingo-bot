@@ -9,35 +9,35 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { background: #0f172a; color: #fff; padding: 6px; display: flex; flex-direction: column; align-items: center; }
-    .card { width: 100%; max-width: 400px; background: #1e293b; border-radius: 8px; padding: 12px; margin-bottom: 6px; text-align: center; }
+    
+    .card { width: 100%; max-width: 400px; background: #1e293b; border-radius: 8px; padding: 8px; margin-bottom: 6px; }
     .header { display: flex; justify-content: space-between; align-items: center; }
     .balance { color: #4ade80; font-weight: bold; font-size: 14px; }
-    .bingo-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-top: 10px; }
-    .bingo-cell { aspect-ratio: 1; background: #334155; color: #fff; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 13px; }
-    .bingo-cell.marked { background: #16a34a !important; }
-    .btn { background: #2563eb; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; width: 100%; cursor: pointer; margin-top: 10px; font-size: 14px; }
+    .back-btn { background: #475569; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; text-decoration: none; }
+
+    .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-top: 6px; max-height: 350px; overflow-y: auto; }
+    .bingo-btn { aspect-ratio: 1; background: #334155; color: #fff; border: none; border-radius: 4px; font-weight: bold; font-size: 13px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .bingo-btn.taken { background: #dc2626 !important; cursor: not-allowed; }
+    .bingo-btn.my-taken { background: #16a34a !important; }
+    .sub-text { font-size: 8px; color: #cbd5e1; }
   </style>
 </head>
 <body>
 
-  <div class="card header" style="width: 100%; max-width: 400px; margin-bottom: 6px;">
-    <div>👤 <span id="user-name">...</span></div>
-    <div class="balance">💰 <span id="user-balance">0.00</span> ETB</div>
+  <div class="card header">
+    <div><a href="index.html" class="back-btn">⬅️ ሜኑ</a> 👤 <span id="user-name">...</span></div>
+    <div>
+      <div class="balance">💰 <span id="user-balance">0.00</span> ETB</div>
+    </div>
   </div>
 
   <div class="card">
-    <h2 style="color: #f59e0b; font-size: 16px; margin-bottom: 6px;">🎯 የቢንጎ ቲኬት (Bingo Card)</h2>
-    <p style="font-size: 11px; color: #94a3b8;">ቁጥሮቹ እየወጡ ሲመጡ እራሱ እየቀለሙ ይሄዳሉ!</p>
-    
-    <div class="bingo-grid" id="bingo-card-grid">
-      <!-- 5x5 Bingo Card Grid dynamically generated -->
+    <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom: 4px;">
+      <span> bingo የቢንጎ ቁጥሮች (1-75):</span>
+      <span style="color:#f59e0b; font-weight:bold;">⏱️ <span id="bingo-timer">30</span>s</span>
     </div>
-
-    <button class="btn" onclick="claimBingo()">🎉 ቢንጎ (Bingo!) አውራ</button>
-    
-    <div style="margin-top: 10px;">
-      <a href="index.html" style="color: #38bdf8; font-size: 11px; text-decoration: none;">⬅️ ወደ ዋናው ገጽ ተመለስ</a>
-    </div>
+    <div style="font-size: 11px; color: #94a3b8; text-align: center;">ቁጥር በመጫን ይያዙ</div>
+    <div class="grid" id="bingo-grid"></div>
   </div>
 
   <script>
@@ -50,32 +50,68 @@
       first_name: tg?.initDataUnsafe?.user?.first_name || "ተጫዋች"
     };
 
+    let takenNumbersMap = {};
+
+    const gridEl = document.getElementById('bingo-grid');
+    for (let i = 1; i <= 75; i++) {
+      const btn = document.createElement('button');
+      btn.className = 'bingo-btn';
+      btn.id = `bingo-${i}`;
+      btn.innerHTML = `<span>${i}</span><span class="sub-text" id="owner-${i}">ክፍት</span>`;
+      btn.onclick = () => selectBingoNumber(i);
+      gridEl.appendChild(btn);
+    }
+
     socket.on('connect', () => socket.emit('registerUser', currentUser));
 
     socket.on('userData', (data) => {
       document.getElementById('user-name').innerText = data.user.name;
       document.getElementById('user-balance').innerText = data.user.balance.toFixed(2);
+      if (data.bingoTakenNumbers) {
+        takenNumbersMap = data.bingoTakenNumbers;
+        updateBingoBoard();
+      }
     });
 
     socket.on('balanceUpdated', (newBal) => {
       document.getElementById('user-balance').innerText = parseFloat(newBal).toFixed(2);
     });
 
-    // Generate a simple sample 5x5 Bingo Grid
-    const gridEl = document.getElementById('bingo-card-grid');
-    let sampleNumbers = [5, 18, 32, 45, 60,  12, 22, 38, 49, 65,  7, 19, "FREE", 52, 70,  9, 25, 41, 58, 72,  3, 29, 44, 59, 75];
-    
-    sampleNumbersforEach = sampleNumbers.forEach((num, index) => {
-      const cell = document.createElement('div');
-      cell.className = 'bingo-cell' + (num === 'FREE' ? ' marked' : '');
-      cell.id = `bingo-cell-${index}`;
-      cell.innerText = num;
-      gridEl.appendChild(cell);
+    socket.on('bingoNumberTaken', (data) => {
+      takenNumbersMap = data.takenNumbersMap;
+      updateBingoBoard();
     });
 
-    function claimBingo() {
-      socket.emit('bingo_winner', { userId: currentUser.id, winAmount: 500 });
-      alert("የቢንጎ አሸናፊነት ጥያቄዎ ተልኳል!");
+    socket.on('bingoGameReset', () => {
+      takenNumbersMap = {};
+      updateBingoBoard();
+    });
+
+    socket.on('errorMsg', (m) => alert(m));
+
+    function selectBingoNumber(num) {
+      socket.emit('selectBingoNumber', { tgId: currentUser.id, number: num });
+    }
+
+    function updateBingoBoard() {
+      for (let i = 1; i <= 75; i++) {
+        const btn = document.getElementById(`bingo-${i}`);
+        const ownerSpan = document.getElementById(`owner-${i}`);
+        const ownerId = takenNumbersMap[i];
+
+        if (ownerId) {
+          btn.classList.add('taken');
+          if (ownerId === String(currentUser.id)) {
+            btn.classList.add('my-taken');
+            ownerSpan.innerText = "የእርስዎ";
+          } else {
+            ownerSpan.innerText = "ተይዟል";
+          }
+        } else {
+          btn.className = 'bingo-btn';
+          ownerSpan.innerText = "ክፍት";
+        }
+      }
     }
   </script>
 </body>
