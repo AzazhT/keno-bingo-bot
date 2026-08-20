@@ -1,35 +1,366 @@
 <!DOCTYPE html>
 <html lang="am">
 <head>
-    <meta charset="UTF-8">
-    <title>Keno Game</title>
-    <script src="/socket.io/socket.io.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; background: #eef2f3; padding: 20px; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Keno Live</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: #0f172a; color: #fff; padding: 6px; display: flex; flex-direction: column; align-items: center; }
+    
+    .card { width: 100%; max-width: 400px; background: #1e293b; border-radius: 8px; padding: 8px; margin-bottom: 6px; }
+    .header { display: flex; justify-content: space-between; align-items: center; }
+    .balance { color: #4ade80; font-weight: bold; font-size: 14px; }
+
+    .btn-dep { background: #16a34a; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; }
+    .btn-with { background: #dc2626; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; }
+
+    .drawn-container { display: flex; flex-wrap: wrap; gap: 3px; min-height: 32px; background: #0f172a; padding: 4px; border-radius: 6px; margin-top: 4px; }
+    .drawn-ball { width: 25px; height: 25px; background: #f59e0b; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 11px; }
+
+    .grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; margin-top: 6px; }
+    .num-btn { aspect-ratio: 1; background: #334155; color: #fff; border: none; border-radius: 4px; font-weight: bold; font-size: 11px; cursor: pointer; padding: 0; }
+    .num-btn.selected { background: #2563eb !important; }
+    .num-btn.drawn { background: #eab308 !important; color: #000; }
+    .num-btn.hit { background: #22c55e !important; color: #fff; }
+
+    .bet-box { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; background: #0f172a; padding: 6px 8px; border-radius: 6px; }
+    .bet-row { display: flex; align-items: center; justify-content: space-between; }
+    .bet-controls { display: flex; align-items: center; gap: 6px; }
+    .btn-step { background: #3b82f6; color: white; border: none; width: 30px; height: 30px; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
+    .bet-input { width: 55px; padding: 4px; text-align: center; background: #1e293b; color: #4ade80; border: 1px solid #475569; border-radius: 4px; font-weight: bold; font-size: 13px; }
+
+    .potential-win { font-size: 12px; color: #f59e0b; font-weight: bold; text-align: center; border-top: 1px dashed #334155; padding-top: 4px; margin-top: 2px; }
+
+    .controls { display: flex; gap: 6px; margin-top: 6px; }
+    .btn { flex: 1; padding: 8px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 13px; }
+    .btn-buy { background: #22c55e; color: white; }
+    .btn-clear { background: #ef4444; color: white; }
+
+    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .player-counter-small { background: #f59e0b; color: #000; padding: 2px 8px; border-radius: 10px; font-weight: bold; font-size: 10px; }
+
+    .ticket-card { background: #0f172a; border-left: 4px solid #2563eb; padding: 6px; margin-top: 4px; border-radius: 4px; font-size: 11px; }
+    .ticket-card.my-ticket { border-left-color: #f59e0b; background: #172554; }
+    .ticket-num { display: inline-block; padding: 1px 5px; margin: 1px; background: #334155; border-radius: 3px; font-weight: bold; }
+    .ticket-num.hit { background: #22c55e !important; color: #fff; }
+    
+    .ticket-info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; }
+    .win-badge { background: #16a34a; color: #fff; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 11px; border: 1px solid #4ade80; }
+  </style>
 </head>
 <body>
-    <h1>Keno Game</h1>
-    <h3 id="kenoBalance">ባላንስ: 0.00 ETB</h3>
-    <p>ቆጣሪ: <span id="kenoTimer">60</span> ሰኮንድ</p>
 
-    <script>
-        const socket = io();
-        let currentUser = { id: "12345", first_name: "ተጠቃሚ" };
+  <div class="card header">
+    <div>👤 <span id="user-name">...</span></div>
+    <div>
+      <div class="balance">💰 <span id="user-balance">0.00</span> ETB</div>
+      <div style="margin-top:2px; text-align:right;">
+        <button class="btn-dep" onclick="depositMoney()">Deposit</button>
+        <button class="btn-with" onclick="withdrawMoney()">Withdraw</button>
+      </div>
+    </div>
+  </div>
 
-        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe.user) {
-            currentUser = window.Telegram.WebApp.initDataUnsafe.user;
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; font-size:12px;">
+      <span>🎲 የኬኖ የወጡ ቁጥሮች (ከ 20):</span>
+      <span style="color:#f59e0b; font-weight:bold;">⏱️ <span id="timer">60</span>s</span>
+    </div>
+    <div class="drawn-container" id="drawn-balls"></div>
+  </div>
+
+  <div class="card">
+    <div style="font-size:11px; margin-bottom: 2px;">የመረጧቸው: <span id="sel-count" style="color:#38bdf8;">0</span>/10</div>
+    <div class="grid" id="keno-grid"></div>
+
+    <div class="bet-box">
+      <div class="bet-row">
+        <span style="font-size:12px;">💵 የመደብ ብር:</span>
+        <div class="bet-controls">
+          <button class="btn-step" onclick="changeBet(-5)">-</button>
+          <input type="number" id="bet-amount" class="bet-input" value="10" readonly>
+          <button class="btn-step" onclick="changeBet(5)">+</button>
+        </div>
+      </div>
+      <div class="potential-win" id="potential-win-text">🏆 ሊያሸንፉ የሚችሉት፦ 0.00 ETB</div>
+    </div>
+
+    <div class="controls">
+      <button class="btn btn-clear" onclick="clearSelection()">አፅዳ</button>
+      <button class="btn btn-buy" id="buy-btn" onclick="buyTicket()">መድብ (BUY)</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-header">
+      <strong style="font-size:11px; color:#38bdf8;">🎫 የተያዙ ቲኬቶች (Live)</strong>
+      <span id="totalPlayers" class="player-counter-small">👥 ተጫዋቾች፦ 4,325</span>
+    </div>
+    <div id="tickets-container"></div>
+    <div style="margin-top: 8px; text-align: center;">
+      <a href="index.html" style="color: #38bdf8; font-size: 11px; text-decoration: none;">⬅️ ወደ ዋናው ገጽ ተመለስ</a>
+    </div>
+  </div>
+
+  <!-- 📌 የቴሌብር SMS ዲፖዚት ፖፕአፕ -->
+  <div id="deposit-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; justify-content:center; align-items:center;">
+    <div style="background:#1e293b; padding:15px; border-radius:8px; width:90%; max-width:350px; color:#fff;">
+      <h3 style="font-size:14px; margin-bottom:8px; color:#4ade80;">💳 በቴሌብር ገንዘብ ማስገባት (Deposit)</h3>
+      <p style="font-size:11px; color:#94a3b8; margin-bottom:8px;">
+        እባክዎ ብሩን ወደዚህ የቴሌብር አካውንት ይላኩ:<br>
+        <strong style="color:#f59e0b; font-size:13px;">0915503379 (Mulualem Shewel)</strong>
+      </p>
+      
+      <div style="margin-bottom:8px;">
+        <label style="font-size:11px; display:block; margin-bottom:2px;">የላኩትን የብር መጠን:</label>
+        <input type="number" id="dep-amount" placeholder="ምሳሌ: 50" style="width:100%; padding:6px; background:#0f172a; border:1px solid #475569; color:#fff; border-radius:4px; font-size:12px;">
+      </div>
+
+      <div style="margin-bottom:10px;">
+        <label style="font-size:11px; display:block; margin-bottom:2px;">የቴሌብር SMS እዚህ ይለጥፉ (Paste):</label>
+        <textarea id="dep-sms" rows="4" placeholder="Dear user You have transferred ETB..." style="width:100%; padding:6px; background:#0f172a; border:1px solid #475569; color:#fff; border-radius:4px; font-size:11px; resize:none;"></textarea>
+      </div>
+
+      <div style="display:flex; gap:6px;">
+        <button onclick="submitDeposit()" style="flex:1; background:#16a34a; color:#fff; border:none; padding:8px; border-radius:4px; font-weight:bold; cursor:pointer; font-size:12px;">አረጋግጥ (Submit)</button>
+        <button onclick="closeDepositModal()" style="flex:1; background:#dc2626; color:#fff; border:none; padding:8px; border-radius:4px; font-weight:bold; cursor:pointer; font-size:12px;">ሰርዝ (Cancel)</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const socket = io("https://bk-gbd9.onrender.com");
+    const tg = window.Telegram?.WebApp;
+    tg?.expand();
+
+    const currentUser = {
+      id: String(tg?.initDataUnsafe?.user?.id || "user_" + Math.floor(Math.random()*1000)),
+      first_name: tg?.initDataUnsafe?.user?.first_name || "ተጫዋች"
+    };
+
+    let selectedNumbers = [];
+    let currentDrawnList = [];
+    let currentActiveTickets = [];
+
+    const PAYTABLE = {
+      1: { 1: 3.5 },
+      2: { 2: 10, 1: 1 },
+      3: { 3: 50, 2: 2 },
+      4: { 4: 100, 3: 5, 2: 1 },
+      5: { 5: 300, 4: 15, 3: 2 },
+      6: { 6: 1000, 5: 50, 4: 5, 3: 1 },
+      7: { 7: 2000, 6: 100, 5: 12, 4: 2 },
+      8: { 8: 5000, 7: 300, 6: 40, 5: 8, 4: 1 },
+      9: { 9: 10000, 8: 1000, 7: 150, 6: 20, 5: 3 },
+      10: { 10: 25000, 9: 2000, 8: 400, 7: 50, 6: 10, 5: 2 }
+    };
+
+    const gridEl = document.getElementById('keno-grid');
+    for (let i = 1; i <= 80; i++) {
+      const btn = document.createElement('button');
+      btn.className = 'num-btn';
+      btn.id = `num-${i}`;
+      btn.innerText = i;
+      btn.onclick = () => toggleNumber(i);
+      gridEl.appendChild(btn);
+    }
+
+    socket.on('connect', () => socket.emit('registerUser', currentUser));
+
+    socket.on('userData', (data) => {
+      document.getElementById('user-name').innerText = data.user.name;
+      document.getElementById('user-balance').innerText = data.user.balance.toFixed(2);
+      currentDrawnList = data.drawnNumbers || [];
+      currentActiveTickets = data.activeTickets || [];
+      if(data.totalPlayersCount) {
+        document.getElementById('totalPlayers').innerText = `👥 ተጫዋቾች፦ ${data.totalPlayersCount.toLocaleString()}`;
+      }
+      renderTickets();
+    });
+
+    socket.on('balanceUpdated', (newBal) => {
+      document.getElementById('user-balance').innerText = parseFloat(newBal).toFixed(2);
+    });
+
+    socket.on('timerUpdate', (t) => {
+      document.getElementById('timer').innerText = t;
+      const buyBtn = document.getElementById('buy-btn');
+      if (t <= 1) {
+        buyBtn.disabled = true;
+        buyBtn.style.opacity = '0.5';
+      } else {
+        buyBtn.disabled = false;
+        buyBtn.style.opacity = '1';
+      }
+    });
+
+    socket.on('updateLiveStats', (data) => {
+      if (data.tickets) {
+        currentActiveTickets = data.tickets;
+        renderTickets();
+      }
+      if (data.totalPlayersCount) {
+        document.getElementById('totalPlayers').innerText = `👥 ተጫዋቾች፦ ${data.totalPlayersCount.toLocaleString()}`;
+      }
+    });
+
+    socket.on('newDrawnNumber', (data) => {
+      currentDrawnList = data.drawnList;
+      appendDrawnBall(data.number);
+      const btn = document.getElementById(`num-${data.number}`);
+      if (btn) {
+        btn.className = selectedNumbers.includes(data.number) ? 'num-btn hit' : 'num-btn drawn';
+      }
+      renderTickets();
+    });
+
+    socket.on('updateActiveTickets', (tickets) => {
+      currentActiveTickets = tickets;
+      renderTickets();
+    });
+
+    socket.on('ticketBoughtSuccess', () => {
+      clearSelection();
+    });
+
+    socket.on('gameReset', () => {
+      document.getElementById('drawn-balls').innerHTML = '';
+      currentDrawnList = [];
+      currentActiveTickets = [];
+      clearSelection();
+      renderTickets();
+    });
+
+    socket.on('infoMsg', (m) => alert(m));
+    socket.on('errorMsg', (m) => alert(m));
+
+    function appendDrawnBall(num) {
+      const container = document.getElementById('drawn-balls');
+      const ball = document.createElement('div');
+      ball.className = 'drawn-ball';
+      ball.innerText = num;
+      container.appendChild(ball);
+    }
+
+    function toggleNumber(num) {
+      const btn = document.getElementById(`num-${num}`);
+      const idx = selectedNumbers.indexOf(num);
+      if (idx > -1) {
+        selectedNumbers.splice(idx, 1);
+        btn.classList.remove('selected');
+      } else {
+        if (selectedNumbers.length >= 10) return alert("ከ 10 ቁጥር በላይ መምረጥ አይችሉም!");
+        selectedNumbers.push(num);
+        btn.classList.add('selected');
+      }
+      document.getElementById('sel-count').innerText = selectedNumbers.length;
+      updatePotentialWin();
+    }
+
+    function clearSelection() {
+      selectedNumbers = [];
+      document.getElementById('sel-count').innerText = 0;
+      for (let i = 1; i <= 80; i++) document.getElementById(`num-${i}`).className = 'num-btn';
+      updatePotentialWin();
+    }
+
+    function changeBet(amount) {
+      const betInput = document.getElementById('bet-amount');
+      let currentBet = parseInt(betInput.value) || 10;
+      currentBet += amount;
+      if (currentBet < 5) currentBet = 5;
+      betInput.value = currentBet;
+      updatePotentialWin();
+    }
+
+    function updatePotentialWin() {
+      const betVal = parseFloat(document.getElementById('bet-amount').value) || 0;
+      const count = selectedNumbers.length;
+      let maxWin = 0;
+      if (count > 0 && PAYTABLE[count] && PAYTABLE[count][count]) {
+        maxWin = betVal * PAYTABLE[count][count];
+      }
+      document.getElementById('potential-win-text').innerText = `🏆 ሊያሸንፉ የሚችሉት፦ ${maxWin.toLocaleString('en-US', {minimumFractionDigits:2})} ETB`;
+    }
+
+    function buyTicket() {
+      if (selectedNumbers.length === 0) return alert("ቢያንስ 1 ቁጥር ይምረጡ!");
+      const betVal = parseFloat(document.getElementById('bet-amount').value);
+      if (isNaN(betVal) || betVal < 5) return alert("ቢያንስ 5 ETB ያስገቡ!");
+
+      const count = selectedNumbers.length;
+      const maxWin = betVal * (PAYTABLE[count] && PAYTABLE[count][count] ? PAYTABLE[count][count] : 0);
+
+      socket.emit('buyTicket', { 
+        userId: currentUser.id, 
+        numbers: selectedNumbers, 
+        bet: betVal,
+        maxWin: maxWin
+      });
+    }
+
+    function depositMoney() { document.getElementById('deposit-modal').style.display = 'flex'; }
+    function closeDepositModal() {
+      document.getElementById('deposit-modal').style.display = 'none';
+      document.getElementById('dep-amount').value = '';
+      document.getElementById('dep-sms').value = '';
+    }
+
+    function submitDeposit() {
+      const amount = parseFloat(document.getElementById('dep-amount').value);
+      const smsText = document.getElementById('dep-sms').value.trim();
+      if (isNaN(amount) || amount <= 0) return alert("እባክዎ ትክክለኛ የብር መጠን ያስገቡ!");
+      if (!smsText) return alert("እባክዎ የቴሌብር SMS መልእክት ይለጥፉ!");
+
+      socket.emit('verifyAndDeposit', { userId: currentUser.id, amount, smsText });
+      closeDepositModal();
+    }
+
+    function withdrawMoney() {
+      const amt = prompt("ወጪ ማድረግ የሚፈልጉትን ብር መጠን ያስገቡ (ETB):");
+      if (amt && parseFloat(amt) >= 10) {
+        socket.emit('requestWithdraw', { userId: currentUser.id, amount: parseFloat(amt) });
+      }
+    }
+
+    function renderTickets() {
+      const container = document.getElementById('tickets-container');
+      if (!currentActiveTickets || currentActiveTickets.length === 0) {
+        return container.innerHTML = '<div style="color:#64748b; font-size:11px;">ምንም የተያዘ ቲኬት የለም</div>';
+      }
+
+      container.innerHTML = currentActiveTickets.map(t => {
+        const isMyTicket = String(t.userId) === String(currentUser.id);
+        let hitCount = t.hitsCount || 0;
+        const numsHtml = t.numbers.map(n => {
+          const isHit = currentDrawnList.includes(n);
+          return `<span class="ticket-num ${isHit ? 'hit' : ''}">${n}</span>`;
+        }).join('');
+
+        let currentWin = 0;
+        const spot = t.numbers.length;
+        if (PAYTABLE[spot] && PAYTABLE[spot][hitCount]) {
+          currentWin = t.bet * PAYTABLE[spot][spot];
         }
 
-        socket.emit('registerUser', currentUser);
-
-        socket.on('userData', (data) => {
-            document.getElementById('kenoBalance').innerText = `ባላንስ: ${data.user.balance} ETB`;
-        });
-
-        socket.on('kenoTimerUpdate', (t) => {
-            document.getElementById('kenoTimer').innerText = t;
-        });
-    </script>
+        return `
+          <div class="ticket-card ${isMyTicket ? 'my-ticket' : ''}">
+            <div class="ticket-info">
+              <div>👤 <strong>${t.userName}</strong> ${isMyTicket ? '(የእርስዎ)' : ''}</div>
+              <div>💵 መደብ: <strong>${t.bet}</strong> ETB</div>
+            </div>
+            <div style="margin-top:2px; margin-bottom: 4px;">${numsHtml}</div>
+            <div class="ticket-info" style="border-top:1px solid #334155; padding-top:3px; margin-top:3px;">
+              <span style="color:#f59e0b;">🏆 ሊበላ የሚችለው: ${(t.maxWin || 0).toLocaleString()} ETB</span>
+              ${currentWin > 0 ? `<span class="win-badge">🎉 የበላው: ${currentWin.toLocaleString()} ETB</span>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  </script>
 </body>
 </html>
