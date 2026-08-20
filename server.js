@@ -1,6 +1,7 @@
 const express = require('express');
 const { Server } = require('socket.io');
 const http = require('http');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
@@ -10,6 +11,9 @@ const io = new Server(server, {
     methods: ["GET", "POST"]
   }
 });
+
+// የስታቲክ ፋይሎች (HTML, CSS, JS) ማከማቻ ፎልደር ማሳወቅ
+app.use(express.static(path.join(__dirname)));
 
 let users = {};
 let activeTickets = [];
