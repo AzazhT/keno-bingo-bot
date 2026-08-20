@@ -1,148 +1,87 @@
-const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 const { Server } = require('socket.io');
 const http = require('http');
-const path = require('path');
-
-// የቦት ቶከን እና የአስተዳዳሪ መለያ
-const TOKEN = '8698997396:AAHbZrYI9p-zJaKCee5d8fUlSuVbizAcOOM';
-const ADMIN_ID = '686733543';
-
-const bot = new TelegramBot(TOKEN, { polling: true });
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] }
-});
-
-// Static files (Frontend ፋይሎችን ከ public ማህደር ለማንበብ)
-app.use(express.static(path.join(__dirname, 'public')));
-
-// ዋናው ሊንክ ሲከፈት የመግቢያ ገጹን (index.html) እንዲያሳይ ማድረግ
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// የውሂብ ማከማቻዎች
-const registeredUsers = {};      // { tgId: { id, name, balance } }
-let kenoTimer = 60;              // የኬኖ ቆጣሪ
-let activeKenoTickets = [];    // የኬኖ ቲኬቶች
-let kenoDrawnNumbers = [];       // የኬኖ የወጡ ቁጥሮች
-
-// ኬኖ ፔይቴብል (Paytable)
-const PAYTABLE = {
-  1: { 1: 3.5 },
-  2: { 2: 10, 1: 1 },
-  3: { 3: 50, 2: 2 },
-  4: { 4: 100, 3: 5, 2: 1 },
-  5: { 5: 300, 4: 15, 3: 2 },
-  6: { 6: 1000, 5: 50, 4: 5, 3: 1 },
-  7: { 7: 2000, 6: 100, 5: 12, 4: 2 },
-  8: { 8: 5000, 7: 300, 6: 40, 5: 8, 4: 1 },
-  9: { 9: 10000, 8: 1000, 7: 150, 6: 20, 5: 3 },
-  10: { 10: 25000, 9: 2000, 8: 400, 7: 50, 6: 10, 5: 2 }
-};
-
-// --- 1. /start ትዕዛዝ ሲላክ ---
-bot.onText(/\/start/, (msg) => {
-  const chatId = msg.chat.id;
-  const welcomeText = "እንኳን ወደ ኬኖ እና ቢንጎ ጨዋታ በደህና መጡ! ከታች ያለውን በመጫን ይጫወቱ።";
-
-  const options = {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: "🎮 ኬኖ ጨዋታ (Play Keno)", web_app: { url: "https://keno-bingo-app-vj8u.onrender.com/keno.html" } },
-          { text: "🎯 ቢንጎ ጨዋታ (Play Bingo)", web_app: { url: "https://keno-bingo-app-vj8u.onrender.com/bingo.html" } }
-        ],
-        [
-          { text: "💰 ባላንስ ማረጋገጫ", callback_data: "balance" },
-          { text: "💸 ገንዘብ ማስገባት (Deposit)", callback_data: "deposit" }
-        ]
-      ]
-    }
-  };
-  bot.sendMessage(chatId, welcomeText, options);
-});
-
-bot.on('callback_query', (query) => {
-  const chatId = query.message.chat.id;
-  const userId = query.from.id;
-  const data = query.data;
-
-  if (data === 'balance') {
-    const user = registeredUsers[userId];
-    const bal = user ? user.balance : 100.00;
-    bot.sendMessage(chatId, `💰 የሒሳብዎ መጠን: ${bal.toFixed(2)} ETB`);
-  } else if (data === 'deposit') {
-    bot.sendMessage(chatId, "📥 ገንዘብ ለማስገባት የቴሌብር ቁጥር: 0915503379 (Mulualem Shewel)");
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
   }
-  bot.answerCallbackQuery(query.id);
 });
 
-// --- 2. የኬኖ 60 ሰከንድ ቆጣሪ እና ቁጥር ማውጣት ---
-setInterval(() => {
-  kenoTimer--;
-  if (kenoTimer <= 0) {
-    kenoTimer = 60;
-    kenoDrawnNumbers = [];
-    activeKenoTickets = [];
-    io.emit('gameReset');
-  } else {
-    if (kenoDrawnNumbers.length < 20) {
-      let rand;
-      do {
-        rand = Math.floor(Math.random() * 80) + 1;
-      } while (kenoDrawnNumbers.includes(rand));
-      
-      kenoDrawnNumbers.push(rand);
+let users = {};
+let activeTickets = [];
+let drawnNumbers = [];
+let totalPlayersCount = 4325;
+let timer = 60;
 
-      activeKenoTickets.forEach(t => {
-        t.hitsCount = t.numbers.filter(n => kenoDrawnNumbers.includes(n)).length;
+// የኬኖ ሰዓት ቆጣሪ እና ኳስ ማውጣት
+setInterval(() => {
+  timer--;
+  if (timer <= 0) {
+    timer = 60;
+    drawnNumbers = [];
+    activeTickets = [];
+    io.emit('gameReset');
+  } else if (timer <= 50 && drawnNumbers.length < 20) {
+    let available = [];
+    for (let i = 1; i <= 80; i++) {
+      if (!drawnNumbers.includes(i)) available.push(i);
+    }
+    if (available.length > 0) {
+      let randNum = available[Math.floor(Math.random() * available.length)];
+      drawnNumbers.push(randNum);
+
+      activeTickets.forEach(t => {
+        if (t.numbers.includes(randNum)) {
+          t.hitsCount = (t.hitsCount || 0) + 1;
+        }
       });
 
-      io.emit('newDrawnNumber', { number: rand, drawnList: kenoDrawnNumbers });
-      io.emit('updateActiveTickets', activeKenoTickets);
+      io.emit('newDrawnNumber', { number: randNum, drawnList: drawnNumbers });
+      io.emit('updateActiveTickets', activeTickets);
     }
   }
-  io.emit('timerUpdate', kenoTimer);
+  io.emit('timerUpdate', timer);
 }, 1000);
 
-// --- 3. Socket.io ግንኙነት ---
 io.on('connection', (socket) => {
-  console.log('ተጫዋች ተገናኝቷል:', socket.id);
+  console.log('ተጠቃሚ ተገናኝቷል:', socket.id);
 
   socket.on('registerUser', (userData) => {
-    if (!userData || !userData.id) return;
-    const tgId = String(userData.id);
-
-    if (!registeredUsers[tgId]) {
-      registeredUsers[tgId] = {
-        id: tgId,
-        name: userData.first_name || "ተጫዋች",
-        balance: 500.00
+    if (!users[userData.id]) {
+      users[userData.id] = {
+        id: userData.id,
+        name: userData.first_name,
+        balance: 100.00
       };
+      totalPlayersCount++;
     }
 
+    socket.user_id = userData.id;
     socket.emit('userData', {
-      user: registeredUsers[tgId],
-      drawnNumbers: kenoDrawnNumbers,
-      activeTickets: activeKenoTickets,
-      totalPlayersCount: 4325
+      user: users[userData.id],
+      drawnNumbers: drawnNumbers,
+      activeTickets: activeTickets,
+      totalPlayersCount: totalPlayersCount
     });
+
+    io.emit('updateLiveStats', { totalPlayersCount: totalPlayersCount });
   });
 
   socket.on('buyTicket', (data) => {
-    const user = registeredUsers[String(data.userId)];
-    if (!user) return socket.emit('errorMsg', 'መጀመሪያ ይመዝገቡ!');
-    if (user.balance < data.bet) return socket.emit('errorMsg', 'ባላንስ በቂ አይደለም!');
+    let user = users[data.userId];
+    if (!user) return socket.emit('errorMsg', 'ተጠቃሚው አልተገኘም!');
+    if (user.balance < data.bet) return socket.emit('errorMsg', 'የሂሳብ ሚዛን በቂ አይደለም!');
 
     user.balance -= data.bet;
     socket.emit('balanceUpdated', user.balance);
 
-    const newTicket = {
-      userId: user.id,
+    let newTicket = {
+      id: Math.random().toString(36).substring(2, 9),
+      userId: data.userId,
       userName: user.name,
       numbers: data.numbers,
       bet: data.bet,
@@ -150,35 +89,46 @@ io.on('connection', (socket) => {
       hitsCount: 0
     };
 
-    activeKenoTickets.push(newTicket);
+    activeTickets.push(newTicket);
     socket.emit('ticketBoughtSuccess');
-    io.emit('updateActiveTickets', activeKenoTickets);
+    io.emit('updateActiveTickets', activeTickets);
+  });
+
+  socket.on('bingo_winner', (data) => {
+    let user = users[data.userId];
+    if (user) {
+      user.balance += data.winAmount;
+      io.to(socket.id).emit('balanceUpdated', user.balance);
+      socket.emit('infoMsg', `እንኳን ደስ አሎት! የ ${data.winAmount} ETB ቢንጎ አሸናፊ ሆነዋል!`);
+    }
   });
 
   socket.on('verifyAndDeposit', (data) => {
-    const user = registeredUsers[String(data.userId)];
+    let user = users[data.userId];
     if (user) {
-      user.balance += parseFloat(data.amount || 0);
+      user.balance += data.amount;
       socket.emit('balanceUpdated', user.balance);
-      socket.emit('infoMsg', 'ገንዘብዎ ወደ አካውንትዎ ገብቷል!');
-      bot.sendMessage(ADMIN_ID, `📥 አዲስ የዲፖዚት ጥያቄ!\nተጠቃሚ: ${user.name}\nመጠን: ${data.amount} ETB\nSMS: ${data.smsText}`);
+      socket.emit('infoMsg', `ሂሳብዎ በ ${data.amount} ETB ተሞልቷል!`);
     }
   });
 
   socket.on('requestWithdraw', (data) => {
-    const user = registeredUsers[String(data.userId)];
+    let user = users[data.userId];
     if (user && user.balance >= data.amount) {
       user.balance -= data.amount;
       socket.emit('balanceUpdated', user.balance);
-      socket.emit('infoMsg', 'የወጪ ጥያቄዎ ተልኳል!');
-      bot.sendMessage(ADMIN_ID, `📤 አዲስ የወጪ ጥያቄ!\nተጠቃሚ: ${user.name}\nመጠን: ${data.amount} ETB`);
+      socket.emit('infoMsg', `የ ${data.amount} ETB ወጪ ጥያቄዎ ተቀባይነት አግኝቷል!`);
     } else {
       socket.emit('errorMsg', 'በቂ ባላንስ የለዎትም!');
     }
+  });
+
+  socket.on('disconnect', () => {
+    console.log('ተጠቃሚ ወጥቷል:', socket.id);
   });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`ሰርቨሩ በፖርት ${PORT} እየሰራ ነው...`);
 });
