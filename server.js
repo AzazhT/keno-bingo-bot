@@ -1,10 +1,7 @@
-const express = require('express');
-const { Server } = require('socket.io');
 const http = require('http');
-const path = require('path');
+const { Server } = require('socket.io');
 
-const app = express();
-const server = http.createServer(app);
+const server = http.createServer();
 const io = new Server(server, {
   cors: {
     origin: "*",
@@ -12,84 +9,107 @@ const io = new Server(server, {
   }
 });
 
-// ፋይሎቹ ያሉበትን ፎልደር በግልጽ ማሳየት
-app.use(express.static(path.join(__dirname, 'public')));
+// የውሂብ ማከማቻዎች
+const registeredUsers = {};      
+let bingoTakenNumbers = {};     
+let bingoDrawnNumbers = [];      
+let bingoTimer = 30;             
 
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+const activeKenoTickets = [];    
+let kenoDrawnNumbers = [];       
+let kenoTimer = 60;              
 
-let users = {};
-let activeTickets = [];
-let drawnNumbers = [];
-let totalPlayersCount = 4325;
-let timer = 60;
-
-// የኬኖ ሰዓት ቆጣሪ እና ኳስ ማውጣት
+// --- የቢንጎ ቆጣሪ ---
 setInterval(() => {
-  timer--;
-  if (timer <= 0) {
-    timer = 60;
-    drawnNumbers = [];
-    activeTickets = [];
-    io.emit('gameReset');
-  } else if (timer <= 50 && drawnNumbers.length < 20) {
-    let available = [];
-    for (let i = 1; i <= 80; i++) {
-      if (!drawnNumbers.includes(i)) available.push(i);
-    }
-    if (available.length > 0) {
-      let randNum = available[Math.floor(Math.random() * available.length)];
-      drawnNumbers.push(randNum);
-
-      activeTickets.forEach(t => {
-        if (t.numbers.includes(randNum)) {
-          t.hitsCount = (t.hitsCount || 0) + 1;
-        }
-      });
-
-      io.emit('newDrawnNumber', { number: randNum, drawnList: drawnNumbers });
-      io.emit('updateActiveTickets', activeTickets);
-    }
+  bingoTimer--;
+  if (bingoTimer <= 0) {
+    bingoTimer = 30;
+    bingoTakenNumbers = {}; 
+    bingoDrawnNumbers = [];
+    io.emit('bingoGameReset');
   }
-  io.emit('timerUpdate', timer);
+
+  let nextNum;
+  do {
+    nextNum = Math.floor(Math.random() * 75) + 1;
+  } while (bingoDrawnNumbers.includes(nextNum));
+
+  bingoDrawnNumbers.push(nextNum);
+  io.emit('bingoNewNumberCall', { number: nextNum, drawnList: bingoDrawnNumbers, timer: bingoTimer });
+}, 1000);
+
+// --- የኬኖ ቆጣሪ ---
+setInterval(() => {
+  kenoTimer--;
+  if (kenoTimer <= 0) {
+    kenoTimer = 60;
+    kenoDrawnNumbers = [];
+    activeKenoTickets.length = 0;
+    io.emit('kenoGameReset');
+  }
+  io.emit('kenoTimerUpdate', kenoTimer);
 }, 1000);
 
 io.on('connection', (socket) => {
-  console.log('ተጠቃሚ ተገናኝቷል:', socket.id);
+  console.log('ተጫዋች ተገናኝቷል:', socket.id);
 
   socket.on('registerUser', (userData) => {
-    if (!users[userData.id]) {
-      users[userData.id] = {
-        id: userData.id,
-        name: userData.first_name,
-        balance: 100.00
+    if (!userData || !userData.id) return;
+    const tgId = String(userData.id);
+
+    if (!registeredUsers[tgId]) {
+      registeredUsers[tgId] = {
+        id: tgId,
+        name: userData.first_name || "ተጫዋች",
+        balance: userData.balance || 100.00,
+        socketId: socket.id
       };
-      totalPlayersCount++;
+    } else {
+      registeredUsers[tgId].socketId = socket.id;
+      if (userData.balance) {
+        registeredUsers[tgId].balance = userData.balance;
+      }
     }
 
-    socket.user_id = userData.id;
     socket.emit('userData', {
-      user: users[userData.id],
-      drawnNumbers: drawnNumbers,
-      activeTickets: activeTickets,
-      totalPlayersCount: totalPlayersCount
+      user: registeredUsers[tgId],
+      bingoTakenNumbers: bingoTakenNumbers,
+      bingoDrawnNumbers: bingoDrawnNumbers,
+      kenoDrawnNumbers: kenoDrawnNumbers,
+      activeKenoTickets: activeKenoTickets
     });
+  });
 
-    io.emit('updateLiveStats', { totalPlayersCount: totalPlayersCount });
+  socket.on('selectBingoNumber', (data) => {
+    const { tgId, number } = data;
+    const user = registeredUsers[String(tgId)];
+
+    if (!user) return socket.emit('errorMsg', 'እባክዎ መጀመሪያ ይመዝገቡ!');
+    if (bingoTakenNumbers[number]) return socket.emit('errorMsg', 'ይህ ቁጥር ቀድሞ ተይዟል!');
+
+    bingoTakenNumbers[number] = String(tgId);
+
+    io.emit('bingoNumberTaken', {
+      number: number,
+      tgId: String(tgId),
+      userName: user.name,
+      takenNumbersMap: bingoTakenNumbers
+    });
   });
 
   socket.on('buyTicket', (data) => {
-    let user = users[data.userId];
+    const user = registeredUsers[String(data.userId)];
     if (!user) return socket.emit('errorMsg', 'ተጠቃሚው አልተገኘም!');
-    if (user.balance < data.bet) return socket.emit('errorMsg', 'የሂሳብ ሚዛን በቂ አይደለም!');
+
+    if (user.balance < data.bet) {
+      return socket.emit('errorMsg', 'ባላንስዎ በቂ አይደለም!');
+    }
 
     user.balance -= data.bet;
     socket.emit('balanceUpdated', user.balance);
 
-    let newTicket = {
-      id: Math.random().toString(36).substring(2, 9),
-      userId: data.userId,
+    const newTicket = {
+      userId: user.id,
       userName: user.name,
       numbers: data.numbers,
       bet: data.bet,
@@ -97,46 +117,17 @@ io.on('connection', (socket) => {
       hitsCount: 0
     };
 
-    activeTickets.push(newTicket);
+    activeKenoTickets.push(newTicket);
     socket.emit('ticketBoughtSuccess');
-    io.emit('updateActiveTickets', activeTickets);
-  });
-
-  socket.on('bingo_winner', (data) => {
-    let user = users[data.userId];
-    if (user) {
-      user.balance += data.winAmount;
-      io.to(socket.id).emit('balanceUpdated', user.balance);
-      socket.emit('infoMsg', `እንኳን ደስ አሎት! የ ${data.winAmount} ETB ቢንጎ አሸናፊ ሆነዋል!`);
-    }
-  });
-
-  socket.on('verifyAndDeposit', (data) => {
-    let user = users[data.userId];
-    if (user) {
-      user.balance += data.amount;
-      socket.emit('balanceUpdated', user.balance);
-      socket.emit('infoMsg', `ሂሳብዎ በ ${data.amount} ETB ተሞልቷል!`);
-    }
-  });
-
-  socket.on('requestWithdraw', (data) => {
-    let user = users[data.userId];
-    if (user && user.balance >= data.amount) {
-      user.balance -= data.amount;
-      socket.emit('balanceUpdated', user.balance);
-      socket.emit('infoMsg', `የ ${data.amount} ETB ወጪ ጥያቄዎ ተቀባይነት አግኝቷል!`);
-    } else {
-      socket.emit('errorMsg', 'በቂ ባላንስ የለዎትም!');
-    }
+    io.emit('updateActiveKenoTickets', activeKenoTickets);
   });
 
   socket.on('disconnect', () => {
-    console.log('ተጠቃሚ ወጥቷል:', socket.id);
+    console.log('ተጫዋች ወጥቷል:', socket.id);
   });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`ሰርቨሩ በፖርት ${PORT} እየሰራ ነው...`);
+  console.log(`Server running on port ${PORT}`);
 });
