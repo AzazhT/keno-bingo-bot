@@ -1,70 +1,82 @@
 <!DOCTYPE html>
 <html lang="am">
 <head>
-    <meta charset="UTF-8">
-    <title>Bingo Game</title>
-    <script src="/socket.io/socket.io.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; background: #f4f4f4; padding: 20px; }
-        .grid { display: grid; grid-template-columns: repeat(5, 60px); gap: 10px; justify-content: center; margin-top: 20px; }
-        .cell { width: 60px; height: 60px; background: white; border: 2px solid #ccc; font-size: 18px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-        .taken { background: #ff4d4d !important; color: white; cursor: not-allowed; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Bingo Live</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: #0f172a; color: #fff; padding: 6px; display: flex; flex-direction: column; align-items: center; }
+    .card { width: 100%; max-width: 400px; background: #1e293b; border-radius: 8px; padding: 12px; margin-bottom: 6px; text-align: center; }
+    .header { display: flex; justify-content: space-between; align-items: center; }
+    .balance { color: #4ade80; font-weight: bold; font-size: 14px; }
+    .bingo-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-top: 10px; }
+    .bingo-cell { aspect-ratio: 1; background: #334155; color: #fff; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 13px; }
+    .bingo-cell.marked { background: #16a34a !important; }
+    .btn { background: #2563eb; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; width: 100%; cursor: pointer; margin-top: 10px; font-size: 14px; }
+  </style>
 </head>
 <body>
-    <h1>Bingo Game (ቆጣሪ: <span id="timer">30</span> ሰኮንድ)</h1>
-    <h3 id="balance">ባላንስ: 0.00 ETB</h3>
-    <div class="grid" id="bingoGrid"></div>
 
-    <script>
-        const socket = io();
-        let currentUser = { id: "12345", first_name: "ተጠቃሚ" }; // ከቴሌግራም ዌብአፕ ዳታ ይወሰዳል
+  <div class="card header" style="width: 100%; max-width: 400px; margin-bottom: 6px;">
+    <div>👤 <span id="user-name">...</span></div>
+    <div class="balance">💰 <span id="user-balance">0.00</span> ETB</div>
+  </div>
 
-        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe.user) {
-            currentUser = window.Telegram.WebApp.initDataUnsafe.user;
-        }
+  <div class="card">
+    <h2 style="color: #f59e0b; font-size: 16px; margin-bottom: 6px;">🎯 የቢንጎ ቲኬት (Bingo Card)</h2>
+    <p style="font-size: 11px; color: #94a3b8;">ቁጥሮቹ እየወጡ ሲመጡ እራሱ እየቀለሙ ይሄዳሉ!</p>
+    
+    <div class="bingo-grid" id="bingo-card-grid">
+      <!-- 5x5 Bingo Card Grid dynamically generated -->
+    </div>
 
-        socket.emit('registerUser', currentUser);
+    <button class="btn" onclick="claimBingo()">🎉 ቢንጎ (Bingo!) አውራ</button>
+    
+    <div style="margin-top: 10px;">
+      <a href="index.html" style="color: #38bdf8; font-size: 11px; text-decoration: none;">⬅️ ወደ ዋናው ገጽ ተመለስ</a>
+    </div>
+  </div>
 
-        socket.on('userData', (data) => {
-            document.getElementById('balance').innerText = `ባላንስ: ${data.user.balance} ETB`;
-            buildBoard(data.bingoTakenNumbers);
-        });
+  <script>
+    const socket = io("https://bk-gbd9.onrender.com");
+    const tg = window.Telegram?.WebApp;
+    tg?.expand();
 
-        function buildBoard(takenMap) {
-            const grid = document.getElementById('bingoGrid');
-            grid.innerHTML = '';
-            for (let i = 1; i <= 75; i++) {
-                const cell = document.createElement('div');
-                cell.className = 'cell';
-                cell.innerText = i;
-                cell.id = `cell-${i}`;
-                
-                if (takenMap && takenMap[i]) {
-                    cell.classList.add('taken');
-                }
+    const currentUser = {
+      id: String(tg?.initDataUnsafe?.user?.id || "user_" + Math.floor(Math.random()*1000)),
+      first_name: tg?.initDataUnsafe?.user?.first_name || "ተጫዋች"
+    };
 
-                cell.onclick = () => {
-                    if (!cell.classList.contains('taken')) {
-                        socket.emit('selectBingoNumber', { tgId: currentUser.id, number: i });
-                    }
-                };
-                grid.appendChild(cell);
-            }
-        }
+    socket.on('connect', () => socket.emit('registerUser', currentUser));
 
-        socket.on('bingoNumberTaken', (data) => {
-            const cell = document.getElementById(`cell-${data.number}`);
-            if (cell) {
-                cell.classList.add('taken');
-            }
-        });
+    socket.on('userData', (data) => {
+      document.getElementById('user-name').innerText = data.user.name;
+      document.getElementById('user-balance').innerText = data.user.balance.toFixed(2);
+    });
 
-        socket.on('bingoTimerUpdate', (t) => {
-            document.getElementById('timer').innerText = t;
-        });
+    socket.on('balanceUpdated', (newBal) => {
+      document.getElementById('user-balance').innerText = parseFloat(newBal).toFixed(2);
+    });
 
-        socket.on('errorMsg', (msg) => { alert(msg); });
-    </script>
+    // Generate a simple sample 5x5 Bingo Grid
+    const gridEl = document.getElementById('bingo-card-grid');
+    let sampleNumbers = [5, 18, 32, 45, 60,  12, 22, 38, 49, 65,  7, 19, "FREE", 52, 70,  9, 25, 41, 58, 72,  3, 29, 44, 59, 75];
+    
+    sampleNumbersforEach = sampleNumbers.forEach((num, index) => {
+      const cell = document.createElement('div');
+      cell.className = 'bingo-cell' + (num === 'FREE' ? ' marked' : '');
+      cell.id = `bingo-cell-${index}`;
+      cell.innerText = num;
+      gridEl.appendChild(cell);
+    });
+
+    function claimBingo() {
+      socket.emit('bingo_winner', { userId: currentUser.id, winAmount: 500 });
+      alert("የቢንጎ አሸናፊነት ጥያቄዎ ተልኳል!");
+    }
+  </script>
 </body>
 </html>
